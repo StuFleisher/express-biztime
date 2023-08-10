@@ -2,11 +2,8 @@
 const express = require("express");
 
 const {
-  ExpressError,
   NotFoundError,
-  UnauthorizedError,
   BadRequestError,
-  ForbiddenError,
 } = require("../expressError");
 
 const db = require("../db");
@@ -29,21 +26,32 @@ router.get("/", async function (req, res) {
 
 
 /** GET /companies/[code]
- * Return obj of company: {company: {code, name, description}}
+ * Return obj of company: {company: {code, name, description, invoices}}
  *
  * If the company given cannot be found, this should return a 404 status response.
 */
 router.get("/:code", async function (req, res) {
   const code = req.params.code;
 
-  const results = await db.query(
+  const companiesResults = await db.query(
     `SELECT code, name, description
       FROM companies
       WHERE code = $1`, [code]
   );
+  const company = companiesResults.rows[0];
+  if (!company) throw new NotFoundError(`No matching company: ${code}`);
 
-  const company = results.rows[0];
-  if(!company) throw new NotFoundError(`No matching company: ${code}`);
+  const invoicesResults = await db.query(
+    `SELECT id
+    FROM invoices
+    JOIN companies ON invoices.comp_code = companies.code
+    WHERE companies.code = $1`,
+    [code]
+    );
+    const invoices = invoicesResults.rows.map(invoice => invoice.id);
+
+    company.invoices = invoices;
+
   return res.json({ company });
 });
 
@@ -62,7 +70,7 @@ router.post("/", async function (req, res) {
     `INSERT INTO companies(code, name, description)
       VALUES($1,$2,$3)
       RETURNING code, name, description`,
-      [req.body.code, req.body.name, req.body.description]
+    [req.body.code, req.body.name, req.body.description]
   );
   console.log("results are", results);
 
